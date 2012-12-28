@@ -1,0 +1,10 @@
+2000            sim_time
+100             tip_sampling_rate_steps
+20              plotting_rate_steps           
+0.1	        dt
+0.025	        dx
+0.00116		diff  
+0               laplacian_stencil (0 - 5 points and 1 - 9 points)
+1               write_AP
+0               write_tip_data
+1024            grid_size

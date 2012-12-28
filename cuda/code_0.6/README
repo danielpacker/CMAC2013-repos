@@ -1,0 +1,54 @@
+/*******************************************************/
+/*     Title: README (cuda2DMinModel)                  */
+/*                                                     */
+/*     Authors: E. Bartocci (eziobart@ams.sunysb.edu)  */
+/*              F. Fenton   (fhf3@cornell.edu)         */
+/*                                                     */
+/*     Description:                                    */
+/*                                                     */
+/*      The following code is part of "cuda2DMinModel" */
+/*      a CUDA implementation of the 2D simulator of   */
+/*      the Bueno-Orovio-Cherry-Fenton Minimal Model.  */
+/*      This code is provided as a supplement of the   */
+/*      paper "Teaching cardiac electrophysiology      */
+/*      modeling to undergraduate students:            */
+/*      "Lab exercises and GPU programming for the     */ 
+/*       study of arrhythmias and spiral wave dynamics"*/
+/*       submitted to Advances in Physiology Education */
+/*                                                     */                               
+/*                                                     */
+/*                                                     */
+/*     Date:  01/03/11                                 */
+/*      Copyright 2011                                 */
+/*                                                     */
+/*                                                     */
+/* ==   Free distribution with authors permission   == */
+/*                                                     */
+/* ==   SUNY Stony Brook, Stony Brook, NY              */
+/* ==   Cornell University, Ithaca, NY                 */ 
+/* ====================================================*/  
+
+IN ORDER TO INSTALL AND EXECUTE
+
+Download CUDA Drivers and Toolkit at this web site:
+http://developer.nvidia.com/cuda-toolkit-40
+
+Install CUDA Drivers
+Install CUDA Toolkit
+
+make
+./cuda2DMinModel
+
+KEYBOARD SHORTCUTS DURING THE SIMULATION
+
+ - key p - pause the simulation
+ - key r - restart the simulation
+
+ - key q - quit the simulation
+
+ - key u - show the u field
+ - key v - show the v field
+ - key w - show the w field
+ - key s - show the s field 
+
+ - key t - show or hide the tip trajectory
