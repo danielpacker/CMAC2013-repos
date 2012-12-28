@@ -1,0 +1,561 @@
+<html><head>
+<title>BCF model</title>
+
+<script id="shader-vs" type="x-shader/x-vertex"> 
+  attribute vec3 aPos;
+  attribute vec2 aTexCoord;
+  varying   vec2 vTexCoord;
+void main(void) {
+   gl_Position = vec4(aPos, 1.);
+   vTexCoord = aTexCoord;
+}
+</script> 
+
+<script id="shader-fs-tip" type="x-shader/x-fragment"> 
+#ifdef GL_ES
+precision highp float;
+#endif
+  uniform sampler2D samp;
+  uniform sampler2D samp1;
+  uniform bool path;
+  varying vec2 vTexCoord;
+  const float d = 1./512., Ut = .3;
+void main(void) {
+   vec4 t = texture2D(samp, vTexCoord);
+   if( !path ){
+     t.b = abs(t.b);
+     gl_FragColor = t;
+     return;}
+   float v = step(Ut, t.a) + step(Ut, texture2D(samp, vec2(vTexCoord.x + d, vTexCoord.y) ).a)
+     + step(Ut, texture2D(samp, vec2(vTexCoord.x, vTexCoord.y + d) ).a)
+     + step(Ut, texture2D(samp, vec2(vTexCoord.x + d, vTexCoord.y + d) ).a);
+   bool bv = (v > .5) && (v < 3.5);
+   v = step(.0, t.a - texture2D(samp1, vTexCoord ).a) +
+     step(.0, texture2D(samp, vec2(vTexCoord.x + d, vTexCoord.y) ).a -
+       texture2D(samp1, vec2(vTexCoord.x + d, vTexCoord.y) ).a) +
+     step(.0, texture2D(samp, vec2(vTexCoord.x, vTexCoord.y + d) ).a -
+       texture2D(samp1, vec2(vTexCoord.x, vTexCoord.y + d) ).a) +
+     step(.0, texture2D(samp, vec2(vTexCoord.x + d, vTexCoord.y + d) ).a -
+       texture2D(samp1, vec2(vTexCoord.x + d, vTexCoord.y + d) ).a);
+   bool bdv = (v > .5) && (v < 3.5);
+   if ( (t.b > .0) && (bv && bdv) ) t.b = -t.b;
+   gl_FragColor = t;
+}
+</script> 
+
+
+<script id="shader-fs-show" type="x-shader/x-fragment"> 
+#ifdef GL_ES
+precision highp float;
+#endif
+  uniform sampler2D uTexSamp;
+  varying vec2 vTexCoord;
+  uniform bool plot;
+  uniform vec2 coord;
+void main(void) {
+float bc = 0.;
+   if( plot && (length(vTexCoord - coord) < .01) ) bc = .8;
+if( texture2D(uTexSamp, vTexCoord).b < 0.) gl_FragColor = vec4( 1. );
+else
+   gl_FragColor = vec4(0.8*texture2D(uTexSamp, vTexCoord).r, 1. - 1.2*texture2D(uTexSamp, vTexCoord).b, bc, 1.);
+}
+</script> 
+
+<script id="shader-fs" type="x-shader/x-fragment"> 
+#ifdef GL_ES
+precision highp float;
+#endif
+  uniform sampler2D uTexSamp;
+  uniform float dt;
+  uniform float dth2;
+  uniform float m;
+  uniform float eps;
+  uniform float nb1;
+  uniform float nu_v1;
+  uniform float nu_v2;
+  uniform float nu_v;
+  uniform float nu_fi;
+  uniform float t_w1;
+  uniform float t_w2;
+  uniform float nu_w;
+  uniform float nu_si;
+  varying vec2 vTexCoord;
+  uniform vec2 vStimCoord;
+  const float d = 1./512.;
+  const float Uu = 1.58, Vv = 0.3, Vw = 0.015, Vo = 0.006,
+   kw = 2.* 65., Uw = 0.03, nu_o = 1./6.,
+   t_so1 = 43., t_so2 = 0.2, kso = 2.* 2., Uso = 0.65,
+   nu_s1 = 1./2.7342, nu_s2 = 1./3., ks = 2.* 2.0994, Us = 0.9087,
+   nu_wN = 0.07, wN = 0.94;
+void main(void) {
+   vec4 t = texture2D(uTexSamp, vTexCoord);
+   float u = t.r,  v = t.g,  w = abs(t.b),  s = t.a,  tb = t.b;
+
+   float v_inf = (u > Vw) ? 0. : 1.;
+   float nu_vm = (u > Vw) ? nu_v2 : nu_v1;
+   float w_inf = (u > Vo)  ? wN : 1. - u*nu_wN;
+   float nu_s =  (u > Vw)  ? nu_s2 : nu_s1;
+   float t_wm = t_w1 + (t_w2 - t_w1)/(1. + exp(-kw*(u - Uw)));
+   float t_so = t_so1 + (t_so2 - t_so1)/(1. + exp(-kso*(u - Uso)));
+   float Jfi = (u > Vv) ? -v*(u - Vv)*(Uu - u)*nu_fi : 0.;
+   float Jso = (u > Vw) ? 1./t_so : u*nu_o;
+   float Jsi = (u > Vw) ? -w*s*nu_si : 0.;
+   float Jsum = -(Jfi + Jso + Jsi);
+   float dv = (u > Vv) ? -v*nu_v : (v_inf - v)*nu_vm;
+   float dw = (u > Vw) ? -w*nu_w : (w_inf - w)/t_wm;
+   float ds = (1./(1. + exp(-ks*(u - Us))) - s)*nu_s;
+
+   float vnew = v + dv*dt;
+   float wnew = w + dw*dt;
+   float snew = s + ds*dt;
+   float unew = u + Jsum*dt;
+   unew += ( 
+            (texture2D(uTexSamp, vec2(vTexCoord.x, vTexCoord.y + d) ).r +
+             texture2D(uTexSamp, vec2(vTexCoord.x, vTexCoord.y - d) ).r +
+             texture2D(uTexSamp, vec2(vTexCoord.x + d, vTexCoord.y) ).r +
+             texture2D(uTexSamp, vec2(vTexCoord.x - d, vTexCoord.y) ).r )*2. +
+
+             texture2D(uTexSamp, vec2(vTexCoord.x + d, vTexCoord.y + d) ).r +
+             texture2D(uTexSamp, vec2(vTexCoord.x - d, vTexCoord.y - d) ).r +
+             texture2D(uTexSamp, vec2(vTexCoord.x + d, vTexCoord.y - d) ).r +
+             texture2D(uTexSamp, vec2(vTexCoord.x - d, vTexCoord.y + d) ).r -
+             12.*u)*dth2;
+     if (dot(vTexCoord- vStimCoord,vTexCoord- vStimCoord) < 0.01*0.01) {
+     unew =unew+0.017;
+      }
+      
+
+   if ( tb < 0. ) gl_FragColor = vec4(unew, vnew, -wnew, snew );
+   else gl_FragColor = vec4(unew, vnew, wnew, snew );
+
+}
+</script> 
+ 
+<script type="text/javascript">
+function getShader ( gl, id ){
+   var shaderScript = document.getElementById ( id );
+   var str = "";
+   var k = shaderScript.firstChild;
+   while ( k ){
+     if ( k.nodeType == 3 ) str += k.textContent;
+     k = k.nextSibling;
+   }
+   var shader;
+   if ( shaderScript.type == "x-shader/x-fragment" )
+           shader = gl.createShader ( gl.FRAGMENT_SHADER );
+   else if ( shaderScript.type == "x-shader/x-vertex" )
+           shader = gl.createShader(gl.VERTEX_SHADER);
+   else return null;
+   gl.shaderSource(shader, str);
+   gl.compileShader(shader);
+   if (gl.getShaderParameter(shader, gl.COMPILE_STATUS) == 0)
+      alert(gl.getShaderInfoLog(shader));
+   return shader;
+}
+requestAnimFrame = (function(){
+  return  window.webkitRequestAnimationFrame ||
+    window.mozRequestAnimationFrame ||
+    function(callback, element){ window.setTimeout(callback, 1000 / 60); }
+})();
+
+var gl, canvas, prog, prog_show, FBO, FBO2, texture, texture2,
+    prog_tip, delay = 10, it = 10, frames = 0, time, animation = "animate", time0,
+nu_v1=1./60, nu_v2=1./60, nu_v=1./1.4506, nu_fi=1./.2,
+t_w1=70., t_w2= 20., nu_w= 1./280, nu_si= 1./3.8723,
+    D = 0.001,
+    n = 512, dt = .1, h = 0.125,
+    xc2 = yc2 = 0, ctx2, plot = false, x_plot = y_plot = 256;
+function main() {
+   var c = document.getElementById("c");
+   c.onmousemove = handleMouseMove;
+   c.onmousedown = handleMouseDown;
+   c.onmouseup = handleMouseUp;
+   c.onmouseout = handleMouseUp;
+
+
+   var err = "Your browser does not support ";
+   if (!window.WebGLRenderingContext){
+     alert(err+"WebGL. See http://get.webgl.org");
+     return;}
+   try { gl = c.getContext("experimental-webgl");
+   } catch(e) {}
+   if ( !gl ) {alert("Can't get WebGL"); return;}
+   var ext;
+   try { ext = gl.getExtension("OES_texture_float");
+   } catch(e) {}
+   if ( !ext ) {alert(err + "OES_texture_float extension"); return;}
+
+   c.addEventListener('mouseup', ev_mouseup, false);
+
+   prog  = gl.createProgram();
+   gl.attachShader(prog, getShader( gl, "shader-vs" ));
+   gl.attachShader(prog, getShader( gl, "shader-fs" ));
+   gl.linkProgram(prog);
+   gl.useProgram(prog);
+
+   gl.uniform1f(gl.getUniformLocation(prog,"nu_v1"),nu_v1);
+   gl.uniform1f(gl.getUniformLocation(prog,"nu_v2"),nu_v2);
+   gl.uniform1f(gl.getUniformLocation(prog,"nu_v"),nu_v);
+   gl.uniform1f(gl.getUniformLocation(prog, "t_w1"),t_w1);
+   gl.uniform1f(gl.getUniformLocation(prog, "t_w2"),t_w2);
+   gl.uniform1f(gl.getUniformLocation(prog, "nu_si"),nu_si);
+   gl.uniform1f(gl.getUniformLocation(prog, "nu_w"),nu_w);      
+   gl.uniform1f(gl.getUniformLocation(prog,"nu_fi"),nu_fi);
+   locSamp = gl.getUniformLocation(prog, "uTexSamp");
+
+   gl.uniform1f(gl.getUniformLocation(prog, "dt"), dt);
+   gl.uniform1f(gl.getUniformLocation(prog, "dth2"), D*dt/(h*h));
+   prog_show  = gl.createProgram();
+   gl.attachShader(prog_show, getShader( gl, "shader-vs" ));
+   gl.attachShader(prog_show, getShader( gl, "shader-fs-show" ));
+   gl.linkProgram(prog_show);
+
+   var posBuffer = gl.createBuffer();
+   gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+   var vertices = new Float32Array([-1,-1,0, 1,-1,0, -1,1,0, 1,1,0]);
+   var aPosLoc = gl.getAttribLocation(prog, "aPos");
+   gl.enableVertexAttribArray( aPosLoc );
+   var aTexLoc = gl.getAttribLocation(prog, "aTexCoord");
+   gl.enableVertexAttribArray( aTexLoc );
+   var texCoords = new Float32Array([0,0, 1,0, 0,1, 1,1]);
+   var texCoordOffset = vertices.byteLength;
+   gl.bufferData(gl.ARRAY_BUFFER,
+       texCoordOffset + texCoords.byteLength, gl.STATIC_DRAW);
+   gl.bufferSubData(gl.ARRAY_BUFFER, 0, vertices);
+   gl.bufferSubData(gl.ARRAY_BUFFER, texCoordOffset, texCoords);
+   gl.vertexAttribPointer(aPosLoc, 3, gl.FLOAT, gl.FALSE, 0, 0);
+   gl.vertexAttribPointer(aTexLoc, 2, gl.FLOAT, gl.FALSE, 0, texCoordOffset);
+
+   texture = gl.createTexture();
+   gl.bindTexture(gl.TEXTURE_2D, texture);
+   gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+   var pixels = [];
+   for(var i = 0; i<n; i++)
+     for(var j = 0; j<n; j++){
+       if (j > n/2){
+         var t = (i - n/2)*.1,  t2 = (i - n/2 + 20)*.05;
+         pixels.push( 1.5*Math.exp(-t*t), 1 - .9*Math.exp(-t2*t2), 1 - .5*Math.exp(-t2*t2), 0);}
+       else pixels.push( 0, 1, 1, 0 );
+     }
+   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, n, n, 0,
+     gl.RGBA, gl.FLOAT, new Float32Array(pixels));
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+   gl.activeTexture(gl.TEXTURE1);
+   texture2 = gl.createTexture();
+   gl.bindTexture(gl.TEXTURE_2D, texture2);
+   gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, n, n, 0,
+     gl.RGBA, gl.FLOAT, new Float32Array(pixels));
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+   FBO = gl.createFramebuffer();
+   gl.bindFramebuffer(gl.FRAMEBUFFER, FBO);
+   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
+       gl.TEXTURE_2D, texture, 0);
+   FBO2 = gl.createFramebuffer();
+   gl.bindFramebuffer(gl.FRAMEBUFFER, FBO2);
+   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
+       gl.TEXTURE_2D, texture2, 0);
+   if( gl.checkFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE)
+     alert(err + "FLOAT as the color attachment to an FBO");
+
+   pos = [-1.,-1.];
+   gl.uniform2fv(gl.getUniformLocation(prog, "vStimCoord"), pos);
+
+gl.useProgram(prog_show);
+gl.uniform2f(gl.getUniformLocation(prog_show, "coord"), x_plot/n, y_plot/n);
+canvas2 = document.getElementById("canvas2");
+   ctx2 = canvas2.getContext("2d");
+   ctx2.lineWidth = 3;
+
+   prog_tip  = gl.createProgram();
+   gl.attachShader(prog_tip, getShader( gl, "shader-vs" ));
+   gl.attachShader(prog_tip, getShader( gl, "shader-fs-tip" ));
+   gl.linkProgram(prog_tip);
+   gl.useProgram(prog_tip);
+   gl.uniform1i(gl.getUniformLocation(prog_tip, "samp1"), 1);
+   gl.uniform1i(gl.getUniformLocation(prog_tip, "path"), 1);
+
+
+   setInterval(fr, 500);
+   time = time0 = new Date().getTime();
+   anim();
+}
+function draw(){
+   gl.useProgram(prog);
+   for(var i = 0; i < it; i++){
+    gl.uniform1i(locSamp, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO2);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.flush();
+
+    gl.uniform1i(locSamp, 1);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.flush();
+   }
+    pos = [-1.,-1.];
+   gl.uniform2fv(gl.getUniformLocation(prog, "vStimCoord"), pos);
+
+   if (time - time0 > 5000){
+    gl.useProgram(prog_tip);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.flush();
+   }
+
+
+   gl.useProgram(prog_show);
+   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+   frames++;
+if(plot){
+    var re = new Uint8Array(4);
+    gl.readPixels(x_plot, y_plot, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, re);
+    ctx2.beginPath();
+    ctx2.moveTo(xc2, 256 - yc2);
+    xc2 += .5;  yc2 = re[0]*1.;
+    if(xc2 > 500){
+     xc2 = 0;
+     ctx2.clearRect (0, 0, 500, 256);
+     ctx2.moveTo(xc2, 256 - yc2);}
+    ctx2.lineTo(xc2, 256 - yc2);
+    ctx2.stroke();
+   }
+  else canvas2.height = 0;
+
+}
+function anim(){
+   draw();
+   switch ( animation ){
+     case "reset":
+      var pixels = [];
+      for(var i = 0; i<n; i++)
+       for(var j = 0; j<n; j++){
+        if (j > n/2){
+         var t = (i - n/2)*.1,  t2 = (i - n/2 + 30)*.05;
+         pixels.push( 4*Math.exp(-t*t), 1*Math.exp(-t2*t2) );}
+        else pixels.push( 0, 0 );
+        pixels.push( 0, 0 );
+       }
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, n, n, 0,
+       gl.RGBA, gl.FLOAT, new Float32Array(pixels));
+      gl.bindTexture(gl.TEXTURE_2D, texture2);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, n, n, 0,
+       gl.RGBA, gl.FLOAT, new Float32Array(pixels));
+      animation = "animate";
+     case "animate":
+       if (delay == 0) requestAnimFrame(anim);
+       else setTimeout("requestAnimFrame(anim)", delay);
+       break;
+     case "stop":
+       break;
+   }
+}
+
+var buttonpressed=false;
+function handleMouseMove(event) {
+	if (buttonpressed) {
+	var c = document.getElementById("c");
+	x = event.layerX;
+	y = event.layerY;
+	pos = [x/512.,1.-y/512.];
+	gl.useProgram(prog);
+	gl.uniform2fv(gl.getUniformLocation(prog, "vStimCoord"), pos);
+	//alert("click" +pos[0] + "/"+ pos[1]);
+	}
+}
+function handleMouseDown(event) {
+	buttonpressed = true;
+	handleMouseMove(event);
+}
+function handleMouseUp(event) {
+	buttonpressed = false;
+}
+
+
+
+function run(v) {
+  if( animation == "animate" ){
+    animation = "stop";
+    document.getElementById('runBtn').value = "Run ";}
+  else{
+    animation = "animate";
+    document.getElementById('runBtn').value = "Stop";
+    anim();
+  }
+}
+function reset() {
+  if( animation == "stop" ){
+    animation = "reset";
+    document.getElementById('runBtn').value = "Stop";
+    anim();}
+  else animation = "reset";
+}
+function ev_mouseup (ev) {
+  if (ev.button != 0) return;
+  if (ev.layerX || ev.layerX == 0) {
+    x_plot = ev.layerX;  y_plot = n - ev.layerY;
+  } else if (ev.offsetX || ev.offsetX == 0) {
+    x_plot = ev.offsetX; y_plot = n - ev.offsetY;
+  }
+//alert(x+" "+y);
+  gl.useProgram(prog_show);
+  gl.uniform2f(gl.getUniformLocation(prog_show, "coord"), x_plot/n, y_plot/n);
+  var it0 = it; it = 0;
+  draw();
+  it = it0;
+}
+
+function setPlot(v) {
+  plot = v;
+  gl.useProgram(prog_show);
+  gl.uniform1i(gl.getUniformLocation(prog_show, "plot"), plot);
+  if (plot){
+    canvas2.height = 256;
+    xc2 = 0;
+    ctx2.clearRect (0, 0, 500, 256);
+   ctx2.lineWidth = 3;
+   ctx2.moveTo(xc2, 256 - yc2);}
+  else canvas2.height = 0;
+}
+
+
+function fr(){
+  var ti = new Date().getTime();
+  var fps = Math.round(1000*frames/(ti - time));
+  document.getElementById("framerate").value = fps;
+  frames = 0;  time = ti;
+}
+
+function setNu_v1(v){
+  nu_v1=1./parseFloat(v);
+  gl.useProgram(prog);
+  gl.uniform1f(gl.uniformLocation(prog,"nu_v1"),nu_v1);
+}
+function setNu_v2(v) {
+  nu_v2 = 1./parseFloat(v);
+  gl.useProgram(prog);
+  gl.uniform1f(gl.getUniformLocation(prog, "nu_v2"),nu_v2);
+}
+function setNu_v(v) {
+  nu_v = 1./parseFloat(v);
+  gl.useProgram(prog);
+  gl.uniform1f(gl.getUniformLocation(prog, "nu_v"), nu_v);
+}
+function setT_w1(v) {
+  t_w1 = parseFloat(v);
+  gl.useProgram(prog);
+  gl.uniform1f(gl.getUniformLocation(prog, "t_w1"), t_w1);
+}
+function setT_w2(v) {
+  t_w2 = parseFloat(v);
+  gl.useProgram(prog);
+  gl.uniform1f(gl.getUniformLocation(prog, "t_w2"), t_w2);
+}
+
+function setNu_fi(v) {
+  nu_fi = 1./parseFloat(v);
+  gl.useProgram(prog);
+  gl.uniform1f(gl.getUniformLocation(prog, "nu_fi"), nu_fi);
+}
+function setNu_w(v) {
+  nu_w = 1./parseFloat(v);
+  gl.useProgram(prog);
+  gl.uniform1f(gl.getUniformLocation(prog, "nu_w"), nu_w);
+}
+function setNu_si(v) {
+  nu_si = 1./parseFloat(v);
+  gl.useProgram(prog);
+  gl.uniform1f(gl.getUniformLocation(prog, "nu_si"), nu_si);
+}
+
+function setDt(v) {
+  dt = parseFloat(v);
+  gl.useProgram(prog);
+  gl.uniform1f(gl.getUniformLocation(prog, "dt"), dt);
+  gl.uniform1f(gl.getUniformLocation(prog, "dth2"), D*dt/(h*h));
+}
+function setH(v) {
+  h = parseFloat(v);
+  gl.useProgram(prog);
+  gl.uniform1f(gl.getUniformLocation(prog, "dth2"), D*dt/(h*h));
+}
+
+function setPath(v) {
+  gl.finish();
+  gl.useProgram(prog_tip);
+  gl.uniform1i(gl.getUniformLocation(prog_tip, "path"), v);
+}
+
+</script>
+
+<style type="text/css">
+  H1{ font-size: 120%; color: green}
+</style>
+</head>
+<body onload="main()">
+  
+<h1>&nbsp; &nbsp; &nbsp; Minimal model of Human Action Potential</h1>
+<table border="0">
+<tr><td>
+<canvas id="c" width="512" height="512" style="position:relative"></canvas>
+</td><td>
+
+
+<br><button onclick="reset()">Reset</button>
+<input type="button" onclick="run()" value="Stop" size="1" id="runBtn">&nbsp; 
+<input type="checkbox" onclick="setPlot(checked);" unchecked id="plotBox">Plot Voltage &nbsp; 
+<input type="checkbox" onclick="setPath(checked);" checked>Tip trajectory
+&nbsp; 
+<p>
+dt<input size="2" value="0.1" onchange="setDt(this.value)"><i>ms</i>&nbsp; 
+
+dx<input size="2" value="0.125" onchange="setH(this.value)"><i>cm</i> &nbsp; 
+
+it<input size="2" value="10" onchange="it=parseInt(this.value)">
+delay<input size="2" value="10" onchange="delay=parseInt(this.value)"> &nbsp; 
+
+fps<input size="2" id="framerate">
+<hr>
+<img src="./colorbar.gif">
+<canvas id="canvas2" width="500" height="256"></canvas> 
+<center>Time (ms)</center>
+<hr>
+<center> <b>Model Parameters </b> </center>
+Sodium time constants:
+&nbsp; 
+tau_vm1<input size=2" value="60." onchange="setNu_v1(this.value)">
+&nbsp; 
+tau_vm2<input size=2" value="60." onchange="setNu_v2(this.value)">
+&nbsp; 
+tau_vp<input size=2" value="1.4506" onchange="setNu_v(this.value)">
+&nbsp; 
+tau_fi<input size=2" value="0.2" onchange="setNu_fi(this.value)">
+<p>
+Calcium time constants:
+&nbsp; 
+tau_wm1<input size=2" value="70." onchange="setT_w1(this.value)">
+&nbsp; 
+tau_wm2<input size=2" value="20." onchange="setT_w2(this.value)">
+&nbsp; 
+tau_wp<input size=2" value="280." onchange="setNu_w(this.value)">
+&nbsp; 
+tau_si<input size=2" value="3.8723" onchange="setNu_si(this.value)">
+<p>
+<p>
+<p>
+</td></tr>
+</table>
+
+
+</body>
+</html>
+<!-- text below generated by server. PLEASE REMOVE --><!-- Counter/Statistics data collection code --><script language="JavaScript" src="http://l.yimg.com/d/lib/smb/js/hosting/cp/js_source/whv2_001.js"></script><script language="javascript">geovisit();</script><noscript><img src="http://visit.webhosting.yahoo.com/visit.gif?us1356129721" alt="setstats" border="0" width="1" height="1"></noscript>
