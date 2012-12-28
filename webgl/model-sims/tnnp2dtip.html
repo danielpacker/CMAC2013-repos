@@ -1,0 +1,990 @@
+<html>
+<head>
+<TITLE>TNNP model. Spiral tip dynamics</TITLE>
+<style type="text/css">
+  H1{ font-size: 120%; color: green}
+  H2{ font-size: 110%; color: green}
+  canvas{ position: relative }
+</style>
+
+<script id="shader-fs-tip" type="x-shader/x-fragment"> 
+#ifdef GL_ES
+precision highp float;
+#endif
+  uniform sampler2D samp0;
+  uniform bool path;
+  varying vec2 vTC;
+  const float d = 1./512., Ut = .5;
+void main(void) {
+   vec4 t0 = texture2D(samp0, vTC);
+   if( !path ){
+     t0.a = .0;
+     gl_FragColor = t0;
+     return;}
+   float v = step(Ut, t0.b) + step(Ut, texture2D(samp0, vec2(vTC.x + d, vTC.y) ).b)
+     + step(Ut, texture2D(samp0, vec2(vTC.x, vTC.y + d) ).b)
+     + step(Ut, texture2D(samp0, vec2(vTC.x + d, vTC.y + d) ).b);
+   bool bv = (v > .5) && (v < 3.5);
+   v = fract(t0.a) +
+     fract(texture2D(samp0, vec2(vTC.x + d, vTC.y) ).a) +
+     fract(texture2D(samp0, vec2(vTC.x, vTC.y + d) ).a) +
+     fract(texture2D(samp0, vec2(vTC.x + d, vTC.y + d) ).a);
+   bool bdv = (v > .25) && (v < 1.75);
+   if ( bv && bdv ) t0.a = 1.;
+   gl_FragColor = t0;
+}
+</script> 
+
+<script id="shader-fs-show" type="x-shader/x-fragment"> 
+#ifdef GL_ES
+precision highp float;
+#endif
+  uniform sampler2D samp0;
+  uniform sampler2D samp2;
+  uniform sampler2D samp4;
+  uniform bool plot;
+  uniform vec2 coord;
+  varying vec2 vTC;
+void main(void) {
+   if( texture2D(samp0, vTC).a > .75){
+     gl_FragColor = vec4( 1. );
+     return;}
+   float bc = 0.;
+   if( plot && (length(vTC - coord) < .01) ) bc = 1.;
+   gl_FragColor = vec4(.01*(texture2D(samp4, vTC).r + 85.),
+     4.*texture2D(samp2, vTC).a, bc, 1.);
+}
+</script> 
+
+<script id="shader-vs" type="x-shader/x-vertex"> 
+  attribute vec3 aPos;
+  attribute vec2 aTexCoord;
+  varying   vec2 vTC;
+void main(void) {
+   gl_Position = vec4(aPos, 1.);
+   vTC = aTexCoord;
+}
+</script> 
+
+<script id="shader-fs0" type="x-shader/x-fragment"> 
+#ifdef GL_ES
+precision highp float;
+#endif
+  uniform sampler2D samp0;
+  uniform sampler2D samp4;
+  uniform sampler2D tab_mj;
+  uniform sampler2D tab_h;
+  varying vec2 vTC;
+  const float st = 1./128.;
+void main(void) {
+   vec4 t = texture2D(samp0, vTC);
+   float sm = t.r,  sj = t.g,  sh = t.b,  tip = (t.a > .75)? 1.01 : 0.;
+   float v = texture2D(samp4, vTC).r;
+   float di = 90. + v,  i = floor(di);
+   di -= i;
+   i = (i + .5)*st;
+   float i1 = i + st;
+   t = texture2D(tab_mj, vec2(i, .5));
+   vec4 t1 = texture2D(tab_mj, vec2(i1, .5));
+   float minf = t.r + (t1.r - t.r)*di;
+   sm = minf + (sm - minf)*(t.g + (t1.g - t.g)*di);
+   float jinf = t.b + (t1.b - t.b)*di;
+   sj += (jinf - sj)*(t.a + (t1.a - t.a)*di);
+   float h  = texture2D(tab_h, vec2(i, .5)).r;
+   float h1 = texture2D(tab_h, vec2(i1, .5)).r;
+   float dh = (jinf - sh)*(h + (h1 - h)*di);
+   sh += dh;
+   gl_FragColor = vec4(sm, sj, sh, tip + .5*step(0., dh) );
+}
+</script> 
+
+<script id="shader-fs1" type="x-shader/x-fragment">
+#ifdef GL_ES
+precision highp float;
+#endif
+  uniform sampler2D samp1;
+  uniform sampler2D samp4;
+  uniform sampler2D tab_r12;
+  uniform sampler2D tab_rs;
+  varying vec2 vTC;
+  const float st = 1./128.;
+void main(void) {
+   vec4 t = texture2D(samp1, vTC);
+   float sr1 = t.r,  sr2 = t.g,  sr = t.b,  ss = t.a;
+   float v = texture2D(samp4, vTC).r;
+   float di = 90. + v,  i = floor(di);
+   di -= i;
+   i = (i + .5)*st;
+   float i1 = i + st;
+   t  = texture2D(tab_r12, vec2(i, .5));
+   vec4 t1 = texture2D(tab_r12, vec2(i1, .5));
+   sr1 += (t.r + (t1.r - t.r)*di - sr1)*(t.g + (t1.g - t.g)*di);
+   sr2 += (t.b + (t1.b - t.b)*di - sr2)*(t.a + (t1.a - t.a)*di);
+   t  = texture2D(tab_rs, vec2(i, .5));
+   t1 = texture2D(tab_rs, vec2(i1, .5));
+   sr += (t.r + (t1.r - t.r)*di - sr)*(t.g + (t1.g - t.g)*di);
+   ss += (t.b + (t1.b - t.b)*di - ss)*(t.a + (t1.a - t.a)*di);
+   gl_FragColor = vec4(sr1, sr2, sr, ss);
+}
+</script> 
+
+<script id="shader-fs2" type="x-shader/x-fragment">
+#ifdef GL_ES
+precision highp float;
+#endif
+  uniform sampler2D samp2;
+  uniform sampler2D samp4;
+  uniform sampler2D tab_df;
+  uniform sampler2D tab_fx;
+  varying vec2 vTC;
+  const float st = 1./128.;
+void main(void) {
+   vec4 t = texture2D(samp2, vTC);
+   float sd = t.r,  sf = t.g,  sf2 = t.b,  sxs = t.a;
+   float v = texture2D(samp4, vTC).r;
+   float di = 90. + v,  i = floor(di);
+   di -= i;
+   i = (i + .5)*st;
+   float i1 = i + st;
+   t  = texture2D(tab_df, vec2(i, .5));
+   vec4 t1 = texture2D(tab_df, vec2(i1, .5));
+   sd += (t.r + (t1.r - t.r)*di - sd)*(t.g + (t1.g - t.g)*di);
+   sf += (t.b + (t1.b - t.b)*di - sf)*(t.a + (t1.a - t.a)*di);
+   t  = texture2D(tab_fx, vec2(i, .5));
+   t1 = texture2D(tab_fx, vec2(i1, .5));
+   sf2 += (t.r + (t1.r - t.r)*di - sf2)*(t.g + (t1.g - t.g)*di);
+   sxs += (t.b + (t1.b - t.b)*di - sxs)*(t.a + (t1.a - t.a)*di);
+   gl_FragColor = vec4(sd, sf, sf2, sxs);
+}
+</script> 
+
+<script id="shader-fs3" type="x-shader/x-fragment">
+#ifdef GL_ES
+precision highp float;
+#endif
+  uniform sampler2D samp2;
+  uniform sampler2D samp3;
+  uniform sampler2D samp4;
+  uniform sampler2D tab_iCa;
+  uniform float dt;
+  varying vec2 vTC;
+  const float st = 1./128.;
+  const float Vc=0.016404,Vsr=0.001094,Vss=0.00005468,
+    Bufc=0.2,Kbufc=0.001,Bufsr=10.,
+    Kbufsr=0.3,Bufss=0.4,Kbufss=0.00025,
+    GpCa=0.1238,KpCa=0.0005,
+    RR=8314.3,FF=96486.7,TT=310.0,
+    rtof=(RR*TT)/FF, Cao=2.0,
+    Vmaxup=0.006375,Kup=0.00025,Vrel=0.102,
+    k3=0.060,k4=0.005,
+    k1prime=0.15,k2prime=0.045,
+    EC=1.5,maxsr=2.5,minsr=1.,
+    Vleak=0.00036,Vxfer=0.0038,
+    CAPACITANCE=0.185,
+    inverseVcF2CAP=CAPACITANCE/(2.*Vc*FF),
+    inversevssF2CAP=CAPACITANCE/(2.*Vss*FF),
+    GbCa=0.000592;
+void main(void) {
+  vec4 t = texture2D(samp4, vTC);
+  float v = t.r, Nai = t.g;
+  float ICaL = t.a;
+  t = texture2D(samp2, vTC);
+  ICaL *= t.r*t.g*t.b;
+  t = texture2D(samp3, vTC);
+  float Cai = t.r,  CaSR = t.g,  CaSS = t.b,  sRR = t.a;
+  float di = 90. + v,  i = floor(di);
+  di -= i;
+  i = (i + .5)*st;
+  float i1 = i + st;
+  t = texture2D(tab_iCa, vec2(i, .5));
+  vec4 t1 = texture2D(tab_iCa, vec2(i1, .5));
+  ICaL *= (t.r + (t1.r - t.r)*di)*CaSS - (t.g + (t1.g - t.g)*di);
+  float INaCa = (t.b + (t1.b - t.b)*di)*Nai*Nai*Nai - (t.a + (t1.a - t.a)*di)*Cai;
+
+  float Eca=0.5*rtof*log(Cao/Cai);
+  float IbCa=GbCa*(v-Eca);
+  float IpCa=GpCa*Cai/(KpCa+Cai);
+  float kCaSR=maxsr-((maxsr-minsr)/(1.+(EC/CaSR)*(EC/CaSR)));
+  float k1=k1prime/kCaSR;
+  float k2=k2prime*kCaSR;
+  float dRR=k4*(1.-sRR)-k2*CaSS*sRR;
+  sRR += dt*dRR;
+  float sOO=k1*CaSS*CaSS*sRR/(k3+k1*CaSS*CaSS);
+
+  float Irel=Vrel*sOO*(CaSR-CaSS);
+  float Ileak=Vleak*(CaSR-Cai);
+  float Iup=Vmaxup/(1.+((Kup*Kup)/(Cai*Cai)));
+  float Ixfer=Vxfer*(CaSS-Cai);
+
+  float CaCSQN=Bufsr*CaSR/(CaSR+Kbufsr);
+  float dCaSR=dt*(Iup-Irel-Ileak);
+  float bjsr=Bufsr-CaCSQN-dCaSR-CaSR+Kbufsr;
+  float cjsr=Kbufsr*(CaCSQN+dCaSR+CaSR);
+  CaSR=(sqrt(bjsr*bjsr+4.*cjsr)-bjsr)*.5;
+
+  float CaSSBuf=Bufss*CaSS/(CaSS+Kbufss);
+  float dCaSS=dt*(-Ixfer*(Vc/Vss)+Irel*(Vsr/Vss)+(-ICaL*inversevssF2CAP));
+  float bcss=Bufss-CaSSBuf-dCaSS-CaSS+Kbufss;
+  float ccss=Kbufss*(CaSSBuf+dCaSS+CaSS);
+  CaSS=(sqrt(bcss*bcss+4.*ccss)-bcss)*.5;
+
+  float CaBuf=Bufc*Cai/(Cai+Kbufc);
+  float dCai=dt*((-(IbCa+IpCa-2.*INaCa)*inverseVcF2CAP)-(Iup-Ileak)*(Vsr/Vc)+Ixfer);
+  float bc=Bufc-CaBuf-dCai-Cai+Kbufc;
+  float cc=Kbufc*(CaBuf+dCai+Cai);
+  Cai=(sqrt(bc*bc+4.*cc)-bc)*.5;
+
+  gl_FragColor = vec4(Cai, CaSR, CaSS, sRR);
+}
+</script> 
+
+<script id="shader-fs4" type="x-shader/x-fragment">
+#ifdef GL_ES
+precision highp float;
+#endif
+  uniform sampler2D samp0;
+  uniform sampler2D samp1;
+  uniform sampler2D samp2;
+  uniform sampler2D samp3;
+  uniform sampler2D samp4;
+  uniform sampler2D tab_iCa;
+  uniform sampler2D tab_i2;
+  uniform float dif;
+  uniform float dt;
+  varying vec2 vTC;
+  const float st = 1./128.,  dx = 1./512.;
+  const float Ko=5.4,Cao=2.0,Nao=140.0,
+     Gks=0.098, Gto=0.294, Gkr=0.153,
+     GNa=14.838,GbNa=0.00029,KmNa=40.0,GbCa=0.000592,
+     GpCa=0.1238,KpCa=0.0005,GpK=0.0146,pKNa=0.03,
+     RR=8314.3,FF=96486.7,TT=310.0,
+     CAPACITANCE=0.185, Vc=0.016404,
+     inverseVcFCAP=CAPACITANCE/(Vc*FF),
+     rtof=(RR*TT)/FF,fort=1./rtof,
+     Gkrfactor = 1.; // sqrt(Ko/5.4);
+void main(void) {
+  vec4 t = texture2D(samp0, vTC);
+  float sm = t.r,  sj = t.g,  sh = t.b;
+  t = texture2D(samp1, vTC);
+  float sxr1 = t.r,  sxr2 = t.g,  sr = t.b,  ss = t.a;
+  t = texture2D(samp2, vTC);
+  float sd = t.r,  sf = t.g,  sf2 = t.b,  sxs = t.a;
+  t = texture2D(samp3, vTC);
+  float Cai = t.r,  CaSR = t.g,  CaSS = t.b,  sRR = t.a;
+  t = texture2D(samp4, vTC);
+  float v = t.r, Nai = t.g, Ki = t.b, sfcass = t.a;
+  float tmp = 0.0025 + CaSS*CaSS;  // new CaSS
+  sfcass += (0.0015/tmp - sfcass)*dt/(2. + 0.2/tmp);
+  float di = 90. + v,  i = floor(di);
+  di -= i;
+  i = (i + .5)*st;
+  float i1 = i + st;
+  t = texture2D(tab_iCa, vec2(i, .5));
+  vec4 t1 = texture2D(tab_iCa, vec2(i1, .5));
+  float ICaL = sd*sf*sf2*sfcass*((t.r + (t1.r - t.r)*di)*CaSS - (t.g + (t1.g - t.g)*di));
+  float INaCa = (t.b + (t1.b - t.b)*di)*Nai*Nai*Nai - (t.a + (t1.a - t.a)*di)*Cai;
+  float Ek=rtof*log(Ko/Ki),
+     Ena=rtof*log(Nao/Nai),
+     Eks=rtof*log((Ko+pKNa*Nao)/(Ki+pKNa*Nai)),
+     Eca=0.5*rtof*log(Cao/Cai);
+  float IbCa=GbCa*(v-Eca),
+     IpCa=GpCa*Cai/(KpCa+Cai),
+     IbNa=GbNa*(v-Ena),
+     Ito=Gto*sr*ss*(v-Ek);
+  t  = texture2D(tab_i2, vec2(i, .5));
+  t1 = texture2D(tab_i2, vec2(i1, .5));
+  float INaK = (t.r + (t1.r - t.r)*di)*Nai/(Nai+KmNa);
+  float IpK = (t.g + (t1.g - t.g)*di)*(v-Ek);
+
+  di = v-Ek;  i = floor(di);  di -= i;
+  i = (i + .5)*st;  i1 = i + st;
+  float c = texture2D(tab_i2, vec2(i, .5)).b;
+  float c1 = texture2D(tab_i2, vec2(i1, .5)).b;
+  float IK1 = c + (c1 - c)*di;
+  float INa=GNa*sm*sm*sm*sh*sj*(v-Ena);
+  float IKr=Gkr*Gkrfactor*sxr1*sxr2*(v-Ek);
+  float IKs=Gks*sxs*sxs*(v-Eks);
+  float sItot=IKr+IKs+IK1+Ito+INa+IbNa+ICaL+IbCa+INaK+INaCa+IpCa+IpK;
+
+  float dNai=-(INa+IbNa+3.*INaK+3.*INaCa)*inverseVcFCAP;
+  Nai += dt*dNai;
+  float dKi=-(IK1+Ito+IKr+IKs-2.*INaK+IpK)*inverseVcFCAP;
+  Ki += dt*dKi;
+  v += ( 
+     (texture2D(samp4, vec2(vTC.x, vTC.y + dx) ).r +
+      texture2D(samp4, vec2(vTC.x, vTC.y - dx) ).r +
+      texture2D(samp4, vec2(vTC.x + dx, vTC.y) ).r +
+      texture2D(samp4, vec2(vTC.x - dx, vTC.y) ).r )*2. +
+
+      texture2D(samp4, vec2(vTC.x + dx, vTC.y + dx) ).r +
+      texture2D(samp4, vec2(vTC.x - dx, vTC.y - dx) ).r +
+      texture2D(samp4, vec2(vTC.x + dx, vTC.y - dx) ).r +
+      texture2D(samp4, vec2(vTC.x - dx, vTC.y + dx) ).r -
+      12.*v)*dif;
+  v -= sItot*dt;
+  gl_FragColor = vec4(v, Nai, Ki, sfcass);
+}
+</script> 
+
+<script type="application/javascript">
+function getShader ( gl, id ){
+   var shaderScript = document.getElementById ( id );
+   var str = "";
+   var k = shaderScript.firstChild;
+   while ( k ){
+     if ( k.nodeType == 3 ) str += k.textContent;
+     k = k.nextSibling;
+   }
+   var shader;
+   if ( shaderScript.type == "x-shader/x-fragment" )
+           shader = gl.createShader ( gl.FRAGMENT_SHADER );
+   else if ( shaderScript.type == "x-shader/x-vertex" )
+           shader = gl.createShader(gl.VERTEX_SHADER);
+   else return null;
+   gl.shaderSource(shader, str);
+   gl.compileShader(shader);
+   if (gl.getShaderParameter(shader, gl.COMPILE_STATUS) == 0)
+      alert(id + "\n" + gl.getShaderInfoLog(shader));
+   return shader;
+}
+requestAnimFrame = (function(){
+  return  window.webkitRequestAnimationFrame ||
+    window.mozRequestAnimationFrame ||
+    function(callback, element){ window.setTimeout(callback, 1000 / 60); }
+})();
+
+var gl, c, FBO0, FBO1, FBO2, FBO3, FBO4, FBO5,
+    prog0, prog1, prog2, prog3, prog4, prog_show, prog_tip,
+    texture0, texture1, texture2, texture3, texture4, texture5,
+    xc2 = yc2 = 0, ctx2, plot = true, x_plot = y_plot = 256, path = true,
+    delay = 10, frames = 0, time, animation = "animate", time0,
+    nx = 512,  dt = 0.05,  nit = 10,  v0 = -85.23,
+    dx=.03, diff1=0.001;
+function main() {
+   var c = document.getElementById("canvas");
+   var err = "Your browser does not support ";
+   if (!window.WebGLRenderingContext){
+     alert(err+"WebGL. See http://get.webgl.org");
+     return;}
+   try { gl = c.getContext("experimental-webgl");
+   } catch(e) {}
+   if ( !gl ) {alert("Can't get WebGL"); return;}
+   var ext;
+   try { ext = gl.getExtension("OES_texture_float");
+   } catch(e) {}
+   if ( !ext ) {alert(err + "OES_texture_float extension"); return;}
+   c.addEventListener('mouseup', ev_mouseup, false);
+
+  prog0 = gl.createProgram();
+  gl.attachShader(prog0, getShader( gl, "shader-vs" ));
+  gl.attachShader(prog0, getShader( gl, "shader-fs0" ));
+  gl.linkProgram(prog0);
+  gl.useProgram(prog0);
+  gl.uniform1i(gl.getUniformLocation(prog0, "samp0"),  0);
+  gl.uniform1i(gl.getUniformLocation(prog0, "tab_mj"), 6);
+  gl.uniform1i(gl.getUniformLocation(prog0, "tab_h"),  7);
+  loc0 = gl.getUniformLocation(prog0, "samp4");
+  var aPosLoc = gl.getAttribLocation(prog0, "aPos");
+  var aTexLoc = gl.getAttribLocation(prog0, "aTexCoord");
+  gl.enableVertexAttribArray( aPosLoc );
+  gl.enableVertexAttribArray( aTexLoc );
+  var data = new Float32Array([-1,-1, 0,0,  1,-1, 1,0,  -1,1, 0,1,  1,1, 1,1]);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+  gl.vertexAttribPointer(aPosLoc, 2, gl.FLOAT, gl.FALSE, 16, 0);
+  gl.vertexAttribPointer(aTexLoc, 2, gl.FLOAT, gl.FALSE, 16, 8);
+  prog1 = gl.createProgram();
+  gl.attachShader(prog1, getShader( gl, "shader-vs" ));
+  gl.attachShader(prog1, getShader( gl, "shader-fs1" ));
+  gl.linkProgram(prog1);
+  gl.useProgram(prog1);
+  gl.uniform1i(gl.getUniformLocation(prog1, "samp1"),  1);
+  gl.uniform1i(gl.getUniformLocation(prog1, "tab_r12"), 8);
+  gl.uniform1i(gl.getUniformLocation(prog1, "tab_rs"),  9);
+  loc1 = gl.getUniformLocation(prog1, "samp4");
+  prog2 = gl.createProgram();
+  gl.attachShader(prog2, getShader( gl, "shader-vs" ));
+  gl.attachShader(prog2, getShader( gl, "shader-fs2" ));
+  gl.linkProgram(prog2);
+  gl.useProgram(prog2);
+  gl.uniform1i(gl.getUniformLocation(prog2, "samp2"),  2);
+  gl.uniform1i(gl.getUniformLocation(prog2, "tab_df"), 10);
+  gl.uniform1i(gl.getUniformLocation(prog2, "tab_fx"), 11);
+  loc2 = gl.getUniformLocation(prog2, "samp4");
+  prog3 = gl.createProgram();
+  gl.attachShader(prog3, getShader( gl, "shader-vs" ));
+  gl.attachShader(prog3, getShader( gl, "shader-fs3" ));
+  gl.linkProgram(prog3);
+  gl.useProgram(prog3);
+  gl.uniform1i(gl.getUniformLocation(prog3, "samp2"),  2);
+  gl.uniform1i(gl.getUniformLocation(prog3, "samp3"),  3);
+  gl.uniform1i(gl.getUniformLocation(prog3, "tab_iCa"), 12);
+  gl.uniform1i(gl.getUniformLocation(prog3, "tab_i2"),  13);
+  gl.uniform1f(gl.getUniformLocation(prog3, "dt"), dt);
+  loc3 = gl.getUniformLocation(prog3, "samp4");
+  prog4 = gl.createProgram();
+  gl.attachShader(prog4, getShader( gl, "shader-vs" ));
+  gl.attachShader(prog4, getShader( gl, "shader-fs4" ));
+  gl.linkProgram(prog4);
+  gl.useProgram(prog4);
+  gl.uniform1i(gl.getUniformLocation(prog4, "samp0"),  0);
+  gl.uniform1i(gl.getUniformLocation(prog4, "samp1"),  1);
+  gl.uniform1i(gl.getUniformLocation(prog4, "samp2"),  2);
+  gl.uniform1i(gl.getUniformLocation(prog4, "samp3"),  3);
+  gl.uniform1i(gl.getUniformLocation(prog4, "tab_iCa"), 12);
+  gl.uniform1i(gl.getUniformLocation(prog4, "tab_i2"),  13);
+  gl.uniform1f(gl.getUniformLocation(prog4, "dt"), dt);
+  gl.uniform1f(gl.getUniformLocation(prog4, "dif"), dt*diff1/(4*dx*dx));
+  loc4 = gl.getUniformLocation(prog4, "samp4");
+
+  prog_show  = gl.createProgram();
+  gl.attachShader(prog_show, getShader( gl, "shader-vs" ));
+  gl.attachShader(prog_show, getShader( gl, "shader-fs-show" ));
+  gl.linkProgram(prog_show);
+  gl.useProgram(prog_show);
+  gl.uniform1i(gl.getUniformLocation(prog_show, "samp2"), 2);
+  gl.uniform1i(gl.getUniformLocation(prog_show, "samp4"), 4);
+  gl.uniform1i(gl.getUniformLocation(prog_show, "plot"), plot);
+  gl.uniform2f(gl.getUniformLocation(prog_show, "coord"), x_plot/nx, y_plot/nx);
+  
+  prog_tip  = gl.createProgram();
+  gl.attachShader(prog_tip, getShader( gl, "shader-vs" ));
+  gl.attachShader(prog_tip, getShader( gl, "shader-fs-tip" ));
+  gl.linkProgram(prog_tip);
+  gl.useProgram(prog_tip);
+  gl.uniform1i(gl.getUniformLocation(prog_tip, "samp0"), 0);
+  gl.uniform1i(gl.getUniformLocation(prog_tip, "path"), 1);
+
+  tau();
+  var data_0=[], data_1=[], data_2=[], data_3=[], data_4=[];
+  for (var y = 0; y < nx; y++)
+  for (var x = 0; x < nx; x++){
+      var xy = x + .7*y - 400;
+      var ex = Math.exp(-.0003*xy*xy);
+      data_0.push( 0, 1 -  ex, 1 -  ex, 0 ); // m j h 0
+      data_1.push( 0.00621, 0.4712, 0, 1 );  // r1 r2 r s
+      data_2.push( 0, 0.79, 0.9755, .7*ex);  // d f f2 xs
+      data_3.push( 0.000126, 3.64, 0.00036, 0.9 ); // Cai CaSR CaSS RR
+      if (y > 450) data_4.push( v0 , 8.604, 136.89, 0.99 ); // v  Nai Ki fcass
+      else data_4.push( v0 + 30*Math.exp(-.001*(xy-30)*(xy-30)), 8.604, 136.89, 0.99 );
+  }
+  gl.activeTexture(gl.TEXTURE0);
+  texture0 = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture0);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, nx, nx, 0,
+     gl.RGBA, gl.FLOAT, new Float32Array(data_0));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.activeTexture(gl.TEXTURE1);
+  texture1 = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture1);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, nx, nx, 0,
+     gl.RGBA, gl.FLOAT, new Float32Array(data_1));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.activeTexture(gl.TEXTURE2);
+  texture2 = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture2);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, nx, nx, 0,
+     gl.RGBA, gl.FLOAT, new Float32Array(data_2));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.activeTexture(gl.TEXTURE3);
+  texture3 = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture3);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, nx, nx, 0,
+     gl.RGBA, gl.FLOAT, new Float32Array(data_3));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.activeTexture(gl.TEXTURE4);
+  texture4 = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture4);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, nx, nx, 0,
+     gl.RGBA, gl.FLOAT, new Float32Array(data_4));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.activeTexture(gl.TEXTURE5);
+  texture5 = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture5);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, nx, nx, 0,
+     gl.RGBA, gl.FLOAT, new Float32Array(data_4));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+  FBO0 = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, FBO0);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
+     gl.TEXTURE_2D, texture0, 0);
+  FBO1 = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, FBO1);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
+     gl.TEXTURE_2D, texture1, 0);
+  FBO2 = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, FBO2);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
+     gl.TEXTURE_2D, texture2, 0);
+  FBO3 = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, FBO3);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
+     gl.TEXTURE_2D, texture3, 0);
+  FBO4 = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, FBO4);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
+     gl.TEXTURE_2D, texture4, 0);
+  FBO5 = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, FBO5);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
+     gl.TEXTURE_2D, texture5, 0);
+  if( gl.checkFramebufferStatus(gl.FRAMEBUFFER) != gl.FRAMEBUFFER_COMPLETE)
+     alert(err + "FLOAT as the color attachment to an FBO");
+//draw(); return;
+
+  canvas2 = document.getElementById("canvas2");
+  ctx2 = canvas2.getContext("2d");
+  ctx2.lineWidth = 2;
+  setInterval(fr, 500);
+  time = time0 = new Date().getTime();
+  anim();
+}
+function tau(){
+  var data_mj=[], data_h=[], data_df=[], data_fx=[], data_r12=[], data_rs=[], data_iCa=[], data_i2=[];
+  for (var i = 0; i < 128; i++){
+    vv = i - 90;
+    var AM=1./(1.+Math.exp((-60.-vv)/5.));
+    var BM=0.1/(1.+Math.exp((vv+35.)/5.))+0.10/(1.+Math.exp((vv-50.)/200.));
+    data_mj.push( 1./( (1.+Math.exp((-56.86-vv)/9.03) )*(1.+Math.exp((-56.86-vv)/9.03)) )); // minft
+    data_mj.push( Math.exp(-dt/(AM*BM)) );          // expTAU_M
+    var AH,BH, AJ,BJ;
+    data_mj.push( 1./((1.+Math.exp((vv+71.55)/7.43))*(1.+Math.exp((vv+71.55)/7.43))) );     // hinft
+    if(vv > -40.){
+      AH=0.;
+      BH=0.77/(0.13*(1.+Math.exp(-(vv+10.66)/11.1)));}
+    else{
+      AH=0.057*Math.exp(-(vv+80.)/6.8);
+      BH=2.7*Math.exp(0.079*vv) + 310000*Math.exp(0.3485*vv);}
+    if(vv > -40.){
+      AJ=0.;
+      BJ=0.6*Math.exp((0.057)*vv)/(1.+Math.exp(-0.1*(vv+32.)));}
+    else{
+      AJ=(((-2.5428e4)*Math.exp(0.2444*vv)-.000006948*
+        Math.exp(-0.04391*vv))*(vv+37.78)/(1.+Math.exp(0.311*(vv+79.23))));
+      BJ=(0.02424*Math.exp(-0.01052*vv)/(1.+Math.exp(-0.1378*(vv+40.14))));}
+    data_mj.push( dt*(AJ+BJ) );                      // nu_J
+    data_h.push( dt*(AH+BH) );                       // nu_H
+
+    data_r12.push( 1./(1.+Math.exp((-26.-vv)/7.)) ); // xr1inft
+    var axr1=450./(1.+Math.exp((-45.-vv)/10.));
+    var bxr1=6./(1.+Math.exp((vv-(-30.))/11.5));
+    data_r12.push( dt/(axr1*bxr1) );                 // nu_Xr1
+    data_r12.push( 1./(1.+Math.exp((vv-(-88.))/24.)) );  // xr2inft
+    var axr2=3./(1.+Math.exp((-60.-vv)/20.));
+    var bxr2=1.12/(1.+Math.exp((vv-60.)/20.));
+    data_r12.push( dt/(axr2*bxr2) );                 // nu_Xr2
+// mid
+    data_rs.push( 1./(1.+Math.exp((20.-vv)/6.)) );  // rinft
+    data_rs.push( dt/(9.5*Math.exp(-(vv+40.)*(vv+40.)/1800.)+0.8) ); // nu_R
+    data_rs.push( 1./(1.+Math.exp((vv+20.)/5.)) );  // sinft
+    data_rs.push( dt/(85.*Math.exp(-(vv+45.)*(vv+45.)/320.)
+      +5./(1.+Math.exp((vv-20.)/5.))+3.) );      // nu_S
+
+    data_df.push( 1./(1.+Math.exp((-8.-vv)/7.5)) ); //  dinft
+    var Ad=1.4/(1.+Math.exp((-35.-vv)/13.))+0.25;
+    var Bd=1.4/(1.+Math.exp((vv+5.)/5.));
+    var Cd=1./(1.+Math.exp((50.-vv)/20.));
+    data_df.push( dt/(Ad*Bd+Cd) );                  //  nu_D
+    data_df.push( 1./(1.+Math.exp((vv+20.)/7.)) );  //  finft
+    var Af=1102.5*Math.exp(-(vv+27.)*(vv+27.)/225.);
+    var Bf=200./(1.+Math.exp((13.-vv)/10.));
+    var Cf=(180./(1.+Math.exp((vv+30.)/10.)))+20.;
+    data_df.push( dt/(Af+Bf+Cf) );                  //  nu_F
+    data_fx.push( 0.67/(1.+Math.exp((vv+35.)/7.))+0.33 );  // f2inft
+    var Af2=562.*Math.exp(-(vv+27.)*(vv+27.)/240.);
+    var Bf2=31./(1.+Math.exp((25.-vv)/10.));
+    var Cf2=16./(1.+Math.exp((vv+30.)/10.));
+    data_fx.push( dt/(Af2+Bf2+Cf2) );               //  nu_F2
+    data_fx.push( 1./(1.+Math.exp((-5.-vv)/14.)) ); // xsinft
+    var Axs=(1400./(Math.sqrt(1.+Math.exp((5.-vv)/6.))));
+    var Bxs=(1./(1.+Math.exp((vv-35.)/15.)));
+    data_fx.push( dt/(Axs*Bxs+80.) );               // nu_Xs
+
+  var Ko=5.4,Cao=2.0,Nao=140.0,
+      GpK=0.0146,GK1=5.405,alphanaca=2.5,
+      KmK=1.0,KmNa=40.0,
+      knak=2.724,GCaL=0.00003980,
+      knaca=1000,KmNai=87.5,KmCa=1.38,ksat=0.1,
+      n=0.35,
+      KmNai3=KmNai*KmNai*KmNai, Nao3=Nao*Nao*Nao,
+      RR=8314.3,FF=96486.7,TT=310.0,
+      rtof=(RR*TT)/FF, fort=1./rtof;
+
+    var temp=Math.exp(2*(vv-15.001)*fort)
+    data_iCa.push( GCaL*4.*(vv-15.001)*(FF*fort)*(0.25*temp)/(temp-1.) ); // ical1t
+    data_iCa.push( GCaL*4.*(vv-15.001)*(FF*fort)*Cao/(temp-1.) );         // ical2t
+    temp=Math.exp((n-1.)*vv*fort);
+    var temp2=knaca/((KmNai3+Nao3)*(KmCa+Cao)*(1.+ksat*temp));
+    data_iCa.push( temp2*Math.exp(n*vv*fort)*Cao );      // inaca1t
+    data_iCa.push( temp2*temp*Nao3*alphanaca );          // inaca2t
+    data_i2.push( (1./(1.+0.1245*Math.exp(-0.1*vv*fort)
+       +0.0353*Math.exp(-vv*fort)))*knak*(Ko/(Ko+KmK)) );// inakcoefft
+    data_i2.push( GpK/(1.+Math.exp((25.-vv)/5.98)) );    // ipkcoefft
+    vv = i;
+    var Ak1=0.1/(1.+Math.exp(0.06*(vv-200.)));
+    var Bk1=(3.*Math.exp(0.0002*(vv+100.))+
+       Math.exp(0.1*(vv-10.)))/(1.+Math.exp(-0.5*(vv)));
+    data_i2.push( vv* GK1*Ak1/(Ak1+Bk1), 0 );             // ik1coefft
+  }
+  gl.activeTexture(gl.TEXTURE6);
+  var texture_mj = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture_mj);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 128, 1, 0,
+     gl.RGBA, gl.FLOAT, new Float32Array(data_mj));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.activeTexture(gl.TEXTURE7);
+  var texture_h = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture_h);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.LUMINANCE, 128, 1, 0,
+     gl.LUMINANCE, gl.FLOAT, new Float32Array(data_h));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.activeTexture(gl.TEXTURE8);
+  var texture_r12 = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture_r12);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 128, 1, 0,
+     gl.RGBA, gl.FLOAT, new Float32Array(data_r12));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.activeTexture(gl.TEXTURE9);
+  var texture_rs = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture_rs);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 128, 1, 0,
+     gl.RGBA, gl.FLOAT, new Float32Array(data_rs));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.activeTexture(gl.TEXTURE10);
+  var texture_df = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture_df);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 128, 1, 0,
+     gl.RGBA, gl.FLOAT, new Float32Array(data_df));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.activeTexture(gl.TEXTURE11);
+  var texture_fx = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture_fx);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 128, 1, 0,
+     gl.RGBA, gl.FLOAT, new Float32Array(data_fx));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.activeTexture(gl.TEXTURE12);
+  var texture_iCa = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture_iCa);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 128, 1, 0,
+     gl.RGBA, gl.FLOAT, new Float32Array(data_iCa));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.activeTexture(gl.TEXTURE13);
+  var texture_i2 = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture_i2);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 128, 1, 0,
+     gl.RGBA, gl.FLOAT, new Float32Array(data_i2));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+}
+function draw(){
+  for(var i = 0; i < nit; i++){
+    gl.useProgram(prog0);
+    gl.uniform1i(loc0, 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.flush();
+    gl.useProgram(prog1);
+    gl.uniform1i(loc1, 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO1);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.flush();
+    gl.useProgram(prog2);
+    gl.uniform1i(loc2, 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO2);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.flush();
+    gl.useProgram(prog3);
+    gl.uniform1i(loc3, 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO3);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.flush();
+    gl.useProgram(prog4);
+    gl.uniform1i(loc4, 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO5);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.flush();
+
+    gl.useProgram(prog0);
+    gl.uniform1i(loc0, 5);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.flush();
+    gl.useProgram(prog1);
+    gl.uniform1i(loc1, 5);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO1);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.flush();
+    gl.useProgram(prog2);
+    gl.uniform1i(loc2, 5);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO2);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.flush();
+    gl.useProgram(prog3);
+    gl.uniform1i(loc3, 5);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO3);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.flush();
+    gl.useProgram(prog4);
+    gl.uniform1i(loc4, 5);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, FBO4);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.flush();}
+  if (time - time0 > 3000){
+   gl.useProgram(prog_tip);
+   gl.bindFramebuffer(gl.FRAMEBUFFER, FBO0);
+   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+   gl.flush();
+  }
+  gl.useProgram(prog_show);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  gl.flush();
+
+  if(plot){
+   var re = new Uint8Array(4);
+   gl.readPixels(x_plot, y_plot, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, re);
+   ctx2.beginPath();
+   ctx2.moveTo(xc2, 256 - yc2);
+   xc2 += .5;  yc2 = re[0];
+   if(xc2 > 1000){
+    xc2 = 0;
+    ctx2.clearRect (0, 0, 1000, 256);
+    ctx2.moveTo(xc2, 256 - yc2);}
+   ctx2.lineTo(xc2, 256 - yc2);
+   ctx2.stroke();
+  }
+
+  frames++;
+}
+function anim(){
+   draw();
+   switch ( animation ){
+     case "reset":
+      var data_0=[], data_1=[], data_2=[], data_3=[], data_4=[];
+      for (var y = 0; y < nx; y++)
+      for (var x = 0; x < nx; x++){
+       var xy = x + .7*y - 400;
+       var ex = Math.exp(-.0003*xy*xy);
+       data_0.push( 0, 1 -  ex, 1 -  ex, 0 ); // m j h 0
+       data_1.push( 0.00621, 0.4712, 0, 1 );  // r1 r2 r s
+       data_2.push( 0, 0.79, 0.9755, .7*ex);  // d f f2 xs
+       data_3.push( 0.000126, 3.64, 0.00036, 0.9 ); // Cai CaSR CaSS RR
+       if (y > 450) data_4.push( v0 , 8.604, 136.89, 0.99 ); // v  Nai Ki fcass
+       else data_4.push( v0 + 30*Math.exp(-.001*(xy-30)*(xy-30)), 8.604, 136.89, 0.99 );
+      }
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, texture0);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, nx, nx, 0,
+       gl.RGBA, gl.FLOAT, new Float32Array(data_0));
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, texture1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, nx, nx, 0,
+       gl.RGBA, gl.FLOAT, new Float32Array(data_1));
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, texture2);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, nx, nx, 0,
+       gl.RGBA, gl.FLOAT, new Float32Array(data_2));
+      gl.activeTexture(gl.TEXTURE3);
+      gl.bindTexture(gl.TEXTURE_2D, texture3);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, nx, nx, 0,
+       gl.RGBA, gl.FLOAT, new Float32Array(data_3));
+      gl.activeTexture(gl.TEXTURE4);
+      gl.bindTexture(gl.TEXTURE_2D, texture4);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, nx, nx, 0,
+       gl.RGBA, gl.FLOAT, new Float32Array(data_4));
+      gl.activeTexture(gl.TEXTURE5);
+      gl.bindTexture(gl.TEXTURE_2D, texture5);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, nx, nx, 0,
+       gl.RGBA, gl.FLOAT, new Float32Array(data_4));
+      animation = "animate";
+     case "animate":
+       if (delay == 0) requestAnimFrame(anim);
+       else setTimeout("requestAnimFrame(anim)", delay);
+       break;
+     case "stop":
+       break;
+   }
+}
+function run(v) {
+  if( animation == "animate" ){
+    animation = "stop";
+    document.getElementById('runBtn').value = "Run ";}
+  else{
+    animation = "animate";
+    document.getElementById('runBtn').value = "Stop";
+    anim();
+  }
+}
+function reset() {
+  if( animation == "stop" ){
+    animation = "reset";
+    document.getElementById('runBtn').value = "Stop";
+    anim();}
+  else animation = "reset";
+}
+function ev_mouseup (ev) {
+  if (ev.button != 0) return;
+  if (ev.layerX || ev.layerX == 0) {
+    x_plot = ev.layerX;  y_plot = nx - ev.layerY;
+  } else if (ev.offsetX || ev.offsetX == 0) {
+    x_plot = ev.offsetX; y_plot = nx - ev.offsetY;
+  }
+//alert(x+" "+y);
+  gl.useProgram(prog_show);
+  gl.uniform2f(gl.getUniformLocation(prog_show, "coord"), x_plot/nx, y_plot/nx);
+  var nit0 = nit; nit = 0;
+  draw();
+  nit = nit0;
+}
+function fr(){
+  var ti = new Date().getTime();
+  var fps = Math.round(1000*frames/(ti - time));
+  document.getElementById("framerate").value = fps;
+  frames = 0;  time = ti;
+}
+function setPlot(v) {
+  plot = v;
+  gl.useProgram(prog_show);
+  gl.uniform1i(gl.getUniformLocation(prog_show, "plot"), plot);
+  if (plot){
+    canvas2.height = 256;
+    xc2 = 0;
+    ctx2.clearRect (0, 0, 500, 256);
+    ctx2.moveTo(xc2, 256 - yc2);}
+  else canvas2.height = 0;
+}
+function setDt(v) {
+  dt = parseFloat(v);
+  tau();
+  gl.useProgram(prog3);
+  gl.uniform1f(gl.getUniformLocation(prog3, "dt"), dt);
+  gl.useProgram(prog4);
+  gl.uniform1f(gl.getUniformLocation(prog4, "dt"), dt);
+  gl.uniform1f(gl.getUniformLocation(prog4, "dif"), dt*diff1/(4*dx*dx));
+}
+function setDx(v) {
+  dx = parseFloat(v);
+  gl.useProgram(prog4);
+  gl.uniform1f(gl.getUniformLocation(prog4, "dif"), dt*diff1/(4*dx*dx));
+}
+function setPath(v) {
+  path = v;
+  gl.finish();
+  gl.useProgram(prog_tip);
+  gl.uniform1i(gl.getUniformLocation(prog_tip, "path"), v);
+}
+document.onkeypress=function(e){
+ var e = window.event || e;
+ if( !e.altKey ) return;
+ switch ( String.fromCharCode(e.charCode) ){
+   case "r": reset(); e.stopPropagation(); break;
+   case "s": run(); e.stopPropagation(); break;
+   case "p":
+    setPlot( !plot );
+    document.getElementById('plotBox').checked = plot;
+    e.stopPropagation();
+    break;
+   case "a":
+    setPath( !path );
+    document.getElementById('pathBox').checked = path;
+    e.stopPropagation();
+    break;
+ }
+}
+</script>
+</head>
+<body onload="main();">
+
+<h1>TNNP model. Spiral tip dynamics</h1>
+
+<table><tr><td>
+<canvas id="canvas" width="512" height="512"></canvas>  
+</td><td>
+dt<input size="2" value="0.05" onchange="setDt(this.value)">ms
+&nbsp; dx<input size="2" value="0.03" onchange="setDx(this.value)">cm
+
+<p>delay<input size="2" value="10" onchange="delay=parseInt(this.value)">
+it<input size="2" value="10" onchange="nit=parseInt(this.value)">
+fps<input size="1" id="framerate">
+
+<p><button onclick="reset()">Reset</button>
+<input type="button" onclick="run()" value="Stop" size="1" id="runBtn">
+<input type="checkbox" onclick="setPath(checked);" checked id="pathBox">pAth
+<input type="checkbox" onclick="setPlot(checked);" checked id="plotBox">Plot
+
+<p>Check "plot" to draw <i>V(t)</i> 
+
+<hr>
+<img src="./colorbartnnp.gif">
+
+<canvas id="canvas2" width="500" height="256"></canvas>
+
+</td></tr></table>
+
+
+<br>On 2D plane <i>V</i> values are displayed by the red color.
+<i>4 xs</i> values are displayed by the green color.
+This script uses simple explicit algorithm and 512x512
+float32 textures with the Neumann (CLAMP_TO_EDGE) boundary conditions.
+It makes <i>2 it</i> time steps per frame.
+
+<hr><a href="heart.html">Heart rhythms</a>
+&nbsp; &nbsp; <i>updated</i> 9 June 2012
+</body>
+</html><!-- text below generated by server. PLEASE REMOVE --><!-- Counter/Statistics data collection code --><script language="JavaScript" src="http://l.yimg.com/d/lib/smb/js/hosting/cp/js_source/whv2_001.js"></script><script language="javascript">geovisit();</script><noscript><img src="http://visit.webhosting.yahoo.com/visit.gif?us1356119367" alt="setstats" border="0" width="1" height="1"></noscript>
