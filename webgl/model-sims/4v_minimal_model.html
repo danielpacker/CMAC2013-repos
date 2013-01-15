@@ -77,16 +77,57 @@ precision highp float;
   uniform float nu_fi;
   uniform float t_w1;
   uniform float t_w2;
+  uniform float t_wm_default;
   uniform float nu_w;
   uniform float nu_si;
   varying vec2 vTexCoord;
   uniform vec2 vStimCoord;
-  const float d = 1./512.;
-  const float Uu = 1.58, Vv = 0.3, Vw = 0.015, Vo = 0.006,
-   kw = 2.* 65., Uw = 0.03, nu_o = 1./6.,
-   t_so1 = 43., t_so2 = 0.2, kso = 2.* 2., Uso = 0.65,
-   nu_s1 = 1./2.7342, nu_s2 = 1./3., ks = 2.* 2.0994, Us = 0.9087,
-   nu_wN = 0.07, wN = 0.94;
+
+/* MRM parameters */
+  const float 
+  d = 1./512.,
+  Uu = 1.55,
+  Vv = 0.3,
+  Vw = 0.013,
+  Vo = 0.006,
+  kw = 2.* 65.,
+  Uw = 0.03,
+  nu_o = 1./6.,
+  t_so1 = 30.0181,
+  t_so2 = 0.9957,
+  kso = 2.* 2.0458,
+  Uso = 0.65,
+  nu_s1 = 1./2.7342,
+  nu_s2 = 1./16.,
+  ks = 2.* 2.0994,
+  Us = 0.9087,
+  nu_wN = 0.07,
+  wN = 0.94;
+/* END MRM */
+
+
+  /* TNNP parameters 
+  const float 
+  d = 1./512.,
+  Uu = 1.58,
+  Vv = 0.3,
+  Vw = 0.015,
+  Vo = 0.006,
+  kw = 2.* 65.,
+  Uw = 0.03,
+  nu_o = 1./6.,
+  t_so1 = 43.,
+  t_so2 = 0.2,
+  kso = 2.* 2.,
+  Uso = 0.65,
+  nu_s1 = 1./2.7342,
+  nu_s2 = 1./3.,
+  ks = 2.* 2.0994,
+  Us = 0.9087,
+  nu_wN = 0.07,
+  wN = 0.94;
+*/
+
 void main(void) {
    vec4 t = texture2D(uTexSamp, vTexCoord);
    float u = t.r,  v = t.g,  w = abs(t.b),  s = t.a,  tb = t.b;
@@ -95,7 +136,15 @@ void main(void) {
    float nu_vm = (u > Vw) ? nu_v2 : nu_v1;
    float w_inf = (u > Vo)  ? wN : 1. - u*nu_wN;
    float nu_s =  (u > Vw)  ? nu_s2 : nu_s1;
-   float t_wm = t_w1 + (t_w2 - t_w1)/(1. + exp(-kw*(u - Uw)));
+   float t_wm;
+   if (t_wm_default > 0.0) 
+   {
+    t_wm = t_wm_default;
+   }
+   else
+   {
+    t_wm = t_w1 + (t_w2 - t_w1)/(1. + exp(-kw*(u - Uw)));
+   }
    float t_so = t_so1 + (t_so2 - t_so1)/(1. + exp(-kso*(u - Uso)));
    float Jfi = (u > Vv) ? -v*(u - Vv)*(Uu - u)*nu_fi : 0.;
    float Jso = (u > Vw) ? 1./t_so : u*nu_o;
@@ -160,8 +209,14 @@ requestAnimFrame = (function(){
 
 var gl, canvas, prog, prog_show, FBO, FBO2, texture, texture2,
     prog_tip, delay = 10, it = 10, frames = 0, time, animation = "animate", time0,
+    /* tnnp 
 nu_v1=1./60, nu_v2=1./60, nu_v=1./1.4506, nu_fi=1./.2,
 t_w1=70., t_w2= 20., nu_w= 1./280, nu_si= 1./3.8723,
+*/
+   /* mrm */
+nu_v1=1./60, nu_v2=1./60, nu_v=1./1.4506, nu_fi=1./.2,
+t_w1=70., t_w2= 20., nu_w= 1./200, nu_si= 1./1.8875,
+/* end mrm */
     D = 0.001,
     n = 512, dt = .1, h = 0.125,
     xc2 = yc2 = 0, ctx2, plot = false, x_plot = y_plot = 256;
@@ -450,6 +505,12 @@ function setNu_v(v) {
   gl.useProgram(prog);
   gl.uniform1f(gl.getUniformLocation(prog, "nu_v"), nu_v);
 }
+function setT_w_default(v) {
+  t_wm_default = parseFloat(v);
+  gl.useProgram(prog);
+  gl.uniform1f(gl.getUniformLocation(prog, "t_wm_default"), t_wm_default);
+}
+
 function setT_w1(v) {
   t_w1 = parseFloat(v);
   gl.useProgram(prog);
@@ -545,6 +606,8 @@ Calcium time constants:
 tau_wm1<input size=2" value="70." onchange="setT_w1(this.value)">
 &nbsp; 
 tau_wm2<input size=2" value="20." onchange="setT_w2(this.value)">
+&nbsp; 
+tau_wm<input size=2" value="20." onchange="setT_w_default(this.value)">
 &nbsp; 
 tau_wp<input size=2" value="280." onchange="setNu_w(this.value)">
 &nbsp; 

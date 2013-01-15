@@ -1,0 +1,333 @@
+
+<!-- saved from url=(0044)http://wwwuser.gwdg.de/~pbittih/barkley.html -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+
+<title>PDE on GPU</title>
+
+<script id="shader-vs" type="x-shader/x-vertex"> 
+  attribute vec3 aPos;
+  attribute vec2 aTexCoord;
+  varying   vec2 vTexCoord;
+void main(void) {
+   gl_Position = vec4(aPos, 1.);
+   vTexCoord = aTexCoord;
+}
+</script> 
+
+<script id="shader-fs-show" type="x-shader/x-fragment"> 
+#ifdef GL_ES
+precision highp float;
+#endif
+  uniform sampler2D uTexSamp;
+  varying vec2 vTexCoord;
+void main(void) {
+   vec4 t = texture2D(uTexSamp, vTexCoord);
+   gl_FragColor = vec4(t.r, 2.*t.g, 0., 1.);
+}
+</script> 
+
+<script id="shader-fs" type="x-shader/x-fragment"> 
+#ifdef GL_ES
+precision highp float;
+#endif
+  uniform sampler2D uTexSamp;
+  uniform float dt;
+  uniform float dte;
+  uniform float dth2;
+  uniform float a;
+  uniform float ba;
+  uniform vec2 vStimCoord;
+  varying vec2 vTexCoord;
+  const float d = 1./512.;
+void main(void) {
+   vec4 t = texture2D(uTexSamp, vTexCoord);
+   float u = t.r,  v = t.g,  u2 = t.b,  v2 = t.a;
+   u += u2/255.;   v += v2/255.;
+   float vnew = v + (u - v)*dt,  uth = v/a + ba,  unew;
+   float tmp = dte*(u - uth);
+   if ( u <= uth)  unew = u/(1. - tmp*(1. - u));
+   else{
+      tmp *= u;
+      unew = (tmp + u)/(tmp + 1.);
+   }
+   unew += (texture2D(uTexSamp, vec2(vTexCoord.x, vTexCoord.y + d) ).r +
+      texture2D(uTexSamp, vec2(vTexCoord.x, vTexCoord.y - d) ).r +
+      texture2D(uTexSamp, vec2(vTexCoord.x + d, vTexCoord.y) ).r +
+      texture2D(uTexSamp, vec2(vTexCoord.x - d, vTexCoord.y) ).r +
+      
+     (texture2D(uTexSamp, vec2(vTexCoord.x, vTexCoord.y + d) ).b +
+      texture2D(uTexSamp, vec2(vTexCoord.x, vTexCoord.y - d) ).b +
+      texture2D(uTexSamp, vec2(vTexCoord.x + d, vTexCoord.y) ).b +
+      texture2D(uTexSamp, vec2(vTexCoord.x - d, vTexCoord.y) ).b)/256.
+
+      - 4.*u)*dth2;
+   if (dot(vTexCoord- vStimCoord,vTexCoord- vStimCoord) < 0.05*0.05) {
+      unew = 0.8;
+   }
+   unew = floor(unew*255.*255.)/255./255.;
+    vnew = floor(vnew*255.*255.)/255./255.;
+    
+   u2 = fract(unew*255.);
+   //if (u2 > .5) unew -= d;
+   unew = unew-u2/255.;
+   v2 = fract(vnew*255.);
+   //if (v2 > .5) vnew -= d;
+   vnew = vnew-v2/255.;
+   gl_FragColor = vec4(unew, vnew, u2, v2 );
+}
+</script> 
+ 
+<script type="text/javascript">
+function getShader ( gl, id ){
+   var shaderScript = document.getElementById ( id );
+   var str = "";
+   var k = shaderScript.firstChild;
+   while ( k ){
+     if ( k.nodeType == 3 ) str += k.textContent;
+     k = k.nextSibling;
+   }
+   var shader;
+   if ( shaderScript.type == "x-shader/x-fragment" )
+           shader = gl.createShader ( gl.FRAGMENT_SHADER );
+   else if ( shaderScript.type == "x-shader/x-vertex" )
+           shader = gl.createShader(gl.VERTEX_SHADER);
+   else return null;
+   gl.shaderSource(shader, str);
+   gl.compileShader(shader);
+   if (gl.getShaderParameter(shader, gl.COMPILE_STATUS) == 0)
+      alert(gl.getShaderInfoLog(shader));
+   return shader;
+}
+requestAnimFrame = (function(){
+  /*return  window.webkitRequestAnimationFrame ||
+    window.mozRequestAnimationFrame ||
+    function(callback, element){ setTimeout(callback, 1000 / framerate); }*/
+    return function(callback, element){ setTimeout(callback, 1000 / framerate); }
+})();
+
+var gl, prog, prog_show, FBO, FBO2, texture, texture2,
+    it = 1, frames = 0, time, mappedTexture,
+    a = .5, b = .04, dt = .02, eps = .02, h = .3, framerate = 60;
+function main() {
+   var c = document.getElementById("c");
+   c.onmousemove = handleMouseMove;
+   c.onmousedown = handleMouseDown;
+   c.onmouseup = handleMouseUp;
+   c.onmouseout = handleMouseUp;
+   if (!window.WebGLRenderingContext){
+     alert("Your browser does not support WebGL. See http://get.webgl.org");
+     return;}
+   try { gl = c.getContext("experimental-webgl");
+   } catch(e) {}
+   if ( !gl ) {alert("Can't get WebGL"); return;}
+
+   prog  = gl.createProgram();
+   gl.attachShader(prog, getShader( gl, "shader-vs" ));
+   gl.attachShader(prog, getShader( gl, "shader-fs" ));
+   gl.linkProgram(prog);
+   prog_show  = gl.createProgram();
+   gl.attachShader(prog_show, getShader( gl, "shader-vs" ));
+   gl.attachShader(prog_show, getShader( gl, "shader-fs-show" ));
+   gl.linkProgram(prog_show);
+
+   var posBuffer = gl.createBuffer();
+   gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+   var vertices = new Float32Array([-1,-1,0, 1,-1,0, -1,1,0, 1,1,0]);
+   var aPosLoc = gl.getAttribLocation(prog, "aPos");
+   gl.enableVertexAttribArray( aPosLoc );
+   var aTexLoc = gl.getAttribLocation(prog, "aTexCoord");
+   gl.enableVertexAttribArray( aTexLoc );
+   var texCoords = new Float32Array([0,0, 1,0, 0,1, 1,1]);
+   var texCoordOffset = vertices.byteLength;
+   gl.bufferData(gl.ARRAY_BUFFER,
+       texCoordOffset + texCoords.byteLength, gl.STATIC_DRAW);
+   gl.bufferSubData(gl.ARRAY_BUFFER, 0, vertices);
+   gl.bufferSubData(gl.ARRAY_BUFFER, texCoordOffset, texCoords);
+   gl.vertexAttribPointer(aPosLoc, 3, gl.FLOAT, gl.FALSE, 0, 0);
+   gl.vertexAttribPointer(aTexLoc, 2, gl.FLOAT, gl.FALSE, 0, texCoordOffset);
+
+   texture = gl.createTexture();
+   gl.bindTexture(gl.TEXTURE_2D, texture);
+   gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+   var pixels = [], tSize = 512;
+   for(var i = 0; i<tSize; i++)
+     for(var j = 0; j<tSize; j++){
+       pixels.push( 0 );  pixels.push( 0 );
+       pixels.push( 0 );  pixels.push( 0 );
+     }
+   for(var j = 257; j < 280; j++){
+   for(var i = 257; i < 512; i++){
+     if (j<270) pixels[4*(j*tSize + i)] = 250;
+     if (j>270) pixels[4*(j*tSize + i) + 1] = 55;
+   }
+   }
+   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, tSize, tSize, 0,
+     gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(pixels));
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+   texture2 = gl.createTexture();
+   gl.bindTexture(gl.TEXTURE_2D, texture2);
+   gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, tSize, tSize, 0,
+     gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(pixels));
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+   FBO = gl.createFramebuffer();
+   gl.bindFramebuffer(gl.FRAMEBUFFER, FBO);
+   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
+       gl.TEXTURE_2D, texture, 0);
+   FBO2 = gl.createFramebuffer();
+   gl.bindFramebuffer(gl.FRAMEBUFFER, FBO2);
+   gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0,
+       gl.TEXTURE_2D, texture2, 0);
+   gl.useProgram(prog);
+   gl.uniform1f(gl.getUniformLocation(prog, "a"), a);
+   gl.uniform1f(gl.getUniformLocation(prog, "ba"),  b/a);
+   gl.uniform1f(gl.getUniformLocation(prog, "dt"), dt);
+   gl.uniform1f(gl.getUniformLocation(prog, "dte"), dt/eps);
+   gl.uniform1f(gl.getUniformLocation(prog, "dth2"), dt/(h*h));
+   gl.uniform1i(gl.getUniformLocation(prog, "uTexSamp"), 1);
+   pos = [-1.,-1.];
+   gl.uniform2fv(gl.getUniformLocation(prog, "vStimCoord"), pos);
+   gl.useProgram(prog_show);
+   gl.uniform1i(gl.getUniformLocation(prog_show, "uTexSamp"), 1);
+   setInterval(fr, 500);
+   time = new Date().getTime();
+   anim();
+}
+function draw(){
+   gl.useProgram(prog);
+   if (it > 0){
+     gl.activeTexture(gl.TEXTURE1);
+     gl.bindTexture(gl.TEXTURE_2D, texture);
+     gl.activeTexture(gl.TEXTURE0);
+     gl.bindFramebuffer(gl.FRAMEBUFFER, FBO2);}
+   else{
+     gl.activeTexture(gl.TEXTURE1);
+     gl.bindTexture(gl.TEXTURE_2D, texture2);
+     gl.activeTexture(gl.TEXTURE0);
+     gl.bindFramebuffer(gl.FRAMEBUFFER, FBO);}
+   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+   gl.flush();
+
+   pos = [-1.,-1.];
+   gl.uniform2fv(gl.getUniformLocation(prog, "vStimCoord"), pos);
+   
+   gl.useProgram(prog_show);
+   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+   
+   
+   
+   it = -it;  frames++;
+   
+}
+function anim(){
+   draw();
+   requestAnimFrame(anim);
+}
+
+function fr(){
+  var ti = new Date().getTime();
+  var fps = Math.round(1000*frames/(ti - time));
+  document.getElementById("framerate").innerHTML = " framerate: "+fps+"fps";
+  frames = 0;  time = ti;
+}
+
+var buttonpressed=false;
+function handleMouseMove(event) {
+	if (buttonpressed) {
+	var c = document.getElementById("c");
+	x = event.layerX;
+	y = event.layerY;
+	pos = [x/512.,1.-y/512.];
+	gl.useProgram(prog);
+	gl.uniform2fv(gl.getUniformLocation(prog, "vStimCoord"), pos);
+	//alert("click" +pos[0] + "/"+ pos[1]);
+	}
+}
+function handleMouseDown(event) {
+	buttonpressed = true;
+	handleMouseMove(event);
+}
+function handleMouseUp(event) {
+	buttonpressed = false;
+}
+function set_params(new_a,new_b,new_eps) {
+	a=new_a;
+	b=new_b;
+	eps=new_eps;
+	document.getElementById("param_a_display").innerHTML=a;
+	document.getElementById("param_b_display").innerHTML=b;
+	document.getElementById("epsilon_display").innerHTML=eps;
+	gl.useProgram(prog);
+	gl.uniform1f(gl.getUniformLocation(prog, "a"), a);
+    gl.uniform1f(gl.getUniformLocation(prog, "ba"),  b/a);
+    gl.uniform1f(gl.getUniformLocation(prog, "dte"), dt/eps);
+}
+function set_framerate(new_framerate) {
+	framerate=new_framerate;
+	document.getElementById("framerate_display").innerHTML=framerate;
+}
+</script>
+
+<style type="text/css">
+  H1{ font-size: 120%; color: green}
+</style>
+</head>
+<body onload="main()">
+  <canvas id="c" width="512" height="512" style="position:relative"></canvas>
+<table border="0">
+<tbody><tr><td>  a: </td><td>
+    <input type="button" onclick="set_params(Math.round((a+parseFloat(a_inc.value))*100000)/100000.,b,eps)" value="up">
+  	<input type="button" onclick="set_params(Math.round((a-parseFloat(a_inc.value))*100000)/100000.,b,eps)" value="down">
+<span id="param_a_display">0.5</span>
+</td><td>
+increment: <input type="text" id="a_inc" value="0.01"> 
+</td><td></td></tr>
+<tr><td>  b: </td><td>
+   <input type="button" onclick="set_params(a,Math.round((b+parseFloat(b_inc.value))*100000)/100000.,eps)" value="up">
+   <input type="button" onclick="set_params(a,Math.round((b-parseFloat(b_inc.value))*100000)/100000.,eps)" value="down">
+<span id="param_b_display">0.04</span>
+</td><td>
+increment: <input type="text" id="b_inc" value="0.001"> 
+</td><td></td></tr>
+<tr><td>  epsilon: </td><td>
+   <input type="button" onclick="set_params(a,b,Math.round((eps+parseFloat(eps_inc.value))*100000)/100000.)" value="up">
+   <input type="button" onclick="set_params(a,b,Math.round((eps-parseFloat(eps_inc.value))*100000)/100000.)" value="down">
+<span id="epsilon_display">0.02</span>
+</td><td>
+increment: <input type="text" id="eps_inc" value="0.001"> 
+</td><td></td></tr>
+<tr><td>  frame rate throttle: </td><td>
+   <input type="button" onclick="set_framerate(Math.round((framerate+parseFloat(framerate_inc.value))*100000)/100000.)" value="up">
+   <input type="button" onclick="set_framerate(Math.round((framerate-parseFloat(framerate_inc.value))*100000)/100000.)" value="down">
+<span id="framerate_display">60</span>
+</td><td>
+increment: <input type="text" id="framerate_inc" value="10"> 
+</td><td></td></tr>
+
+</tbody></table>
+<div id="framerate"> framerate: 57fps</div>
+
+<h1>Barkley's model of an excitable medium</h1>
+
+<p>The script starts with <i>a = 0.5, b = 0.04, &#949; = 0.02</i>.
+8 bit floating point values (in RGBA textures) are not enough,
+therefore floating numbers are stored broken in two cells (bytes).
+
+</p><hr>Based on: <a href="http://www.ibiblio.org/e-notes/webgl/gpu/contents.htm">Simulations on GPU</a>
+
+<p></p><p>[1] Dwight Barkley
+<i>"A model for fast computer simulation of waves in excitable media"</i>
+Physica D 49 (1991) 61-70
+
+<br>[2] M.Dowle, R.M.Mantel and D.Barkley
+<i>"Fast simulations of waves in three-dimensional excitable media"</i>
+Int. Journal of Bifurcation and Chaos, Vol. 7, No. 11 (1997) 2529-2545
+
+</p></body></html><!-- text below generated by server. PLEASE REMOVE --><!-- Counter/Statistics data collection code --><script language="JavaScript" src="http://l.yimg.com/d/lib/smb/js/hosting/cp/js_source/whv2_001.js"></script><script language="javascript">geovisit();</script><noscript><img src="http://visit.webhosting.yahoo.com/visit.gif?us1358292692" alt="setstats" border="0" width="1" height="1"></noscript>
